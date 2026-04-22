@@ -7,7 +7,7 @@ viewing their reference photos, and visualizing the embedding space.
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.services.gallery import gallery_service
@@ -90,47 +90,49 @@ def serve_gallery_image(label: str, index: int):
 
 
 @router.get("/embedding-map")
-def get_embedding_map(max_points: int = Query(default=500, le=2000)):
+def get_embedding_map():
     """
-    Get a 2D projection (t-SNE) of all gallery embeddings for visualization.
+    Get a 2D UMAP projection of all gallery embeddings for interactive visualization.
 
-    This is computed on-demand and cached in memory.
+    Returns cached coordinates computed at server startup. Each point includes
+    an image URL so the frontend can display the photo on click.
     """
     if not gallery_service.is_loaded:
         gallery_service.load()
 
     gallery = gallery_service.gallery
     if gallery.size == 0:
-        return {"points": []}
+        return {"total_points": 0, "unique_labels": [], "points": []}
 
-    import numpy as np
-    from sklearn.manifold import TSNE
+    # Compute (or return cached) 2D projection
+    coords = gallery_service.compute_2d_projection()
 
-    # Subsample if too many points
-    n = min(max_points, gallery.size)
-    if n < gallery.size:
-        indices = np.random.choice(gallery.size, n, replace=False)
-        embeddings = gallery.embeddings_tensor[indices].numpy()
-        labels = [gallery.labels[i] for i in indices]
-    else:
-        embeddings = gallery.embeddings_tensor.numpy()
-        labels = gallery.labels
-
-    # Compute t-SNE
-    perplexity = min(30, n - 1) if n > 1 else 1
-    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, max_iter=1000)
-    coords = tsne.fit_transform(embeddings)
+    # Build a mapping: for each (label, entry_index_within_label) -> global index
+    # We need to find which image index within the individual this entry corresponds to
+    label_counters: dict[str, int] = {}
 
     points = []
-    for i in range(len(labels)):
+    for i in range(gallery.size):
+        label = gallery.labels[i]
+
+        # Track per-label image index for the image URL
+        if label not in label_counters:
+            label_counters[label] = 0
+        img_idx = label_counters[label]
+        label_counters[label] += 1
+
+        import urllib.parse
+        encoded_label = urllib.parse.quote(label, safe='')
+        image_url = f"/api/gallery/individuals/{encoded_label}/image/{img_idx}"
+
         points.append({
             "x": float(coords[i, 0]),
             "y": float(coords[i, 1]),
-            "label": labels[i],
+            "label": label,
+            "image_url": image_url,
         })
 
-    # Get unique labels for color mapping
-    unique_labels = sorted(set(labels))
+    unique_labels = sorted(set(gallery.labels))
 
     return {
         "total_points": len(points),

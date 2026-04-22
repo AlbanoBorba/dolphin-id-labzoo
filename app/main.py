@@ -35,6 +35,8 @@ async def lifespan(app: FastAPI):
     from app.services.gallery import gallery_service
     try:
         gallery_service.load()
+        # Pre-compute UMAP 2D projection so the embedding map is ready instantly
+        gallery_service.compute_2d_projection()
     except FileNotFoundError:
         logger.warning("Gallery PKL not found -- run setup_artifacts.py first")
 

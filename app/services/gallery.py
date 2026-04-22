@@ -6,6 +6,7 @@ This is the core reference data used for matching unknown dolphins.
 """
 import pickle
 import logging
+import time
 from pathlib import Path
 from dataclasses import dataclass, field
 
@@ -33,6 +34,7 @@ class GalleryData:
     embeddings_tensor: torch.Tensor | None = None  # [N x 512] normalized
     labels: list[str] = field(default_factory=list)
     individuals: dict[str, list[int]] = field(default_factory=dict)  # label -> [indices]
+    embedding_map_2d: np.ndarray | None = None  # [N x 2] UMAP projection (cached)
 
     @property
     def size(self) -> int:
@@ -120,6 +122,46 @@ class GalleryService:
         # Resolve against the configured base path
         resolved = settings.gallery_base_path / relative_path
         return resolved
+
+    def compute_2d_projection(self) -> np.ndarray:
+        """
+        Compute a 2D UMAP projection of all gallery embeddings.
+
+        The result is cached in GalleryData.embedding_map_2d so subsequent
+        calls return instantly. Uses random_state=42 for deterministic output.
+        """
+        gallery = self.gallery
+
+        # Return cached projection if available
+        if gallery.embedding_map_2d is not None:
+            return gallery.embedding_map_2d
+
+        if gallery.size == 0:
+            gallery.embedding_map_2d = np.empty((0, 2), dtype=np.float32)
+            return gallery.embedding_map_2d
+
+        import umap
+
+        logger.info(f"Computing UMAP 2D projection for {gallery.size} embeddings...")
+        t0 = time.time()
+
+        embeddings = gallery.embeddings_tensor.numpy()
+        n_neighbors = min(15, gallery.size - 1) if gallery.size > 1 else 1
+
+        reducer = umap.UMAP(
+            n_components=2,
+            n_neighbors=n_neighbors,
+            min_dist=0.3,
+            metric="cosine",
+            random_state=42,
+        )
+        coords = reducer.fit_transform(embeddings).astype(np.float32)
+
+        gallery.embedding_map_2d = coords
+        elapsed = time.time() - t0
+        logger.info(f"UMAP projection computed in {elapsed:.1f}s")
+
+        return coords
 
     def find_matches(self, query_embedding: torch.Tensor, top_k: int = 5) -> list[dict]:
         """

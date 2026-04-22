@@ -119,155 +119,205 @@ async function renderEmbeddingsPage(container) {
     container.innerHTML = `
         <div class="page-header">
             <h1 class="page-title">Espaço Latente</h1>
-            <p class="page-subtitle">Projeção t-SNE dos embeddings (vetores de 512 dimensões → 2D). Cada ponto é uma foto, colorida pelo indivíduo.</p>
+            <p class="page-subtitle">Projeção UMAP dos embeddings (vetores de 512 dimensões → 2D). Cada ponto é uma foto, colorida pelo indivíduo. Clique em um ponto para ver a foto.</p>
         </div>
 
         <div class="card">
             <div class="card-header">
-                <h2>Projeção t-SNE dos Embeddings da Galeria</h2>
-                <button class="btn btn-primary btn-sm" id="load-tsne-btn" onclick="loadEmbeddingMap()">
-                    🔄 Gerar Visualização
-                </button>
+                <h2>Projeção UMAP dos Embeddings da Galeria</h2>
+                <div class="embedding-stats" id="embedding-stats"></div>
             </div>
             <div class="card-body">
-                <div id="tsne-container" style="position: relative;">
-                    <div class="empty-state" id="tsne-placeholder">
-                        <div class="empty-state-icon">🌐</div>
-                        <div class="empty-state-text">Clique em "Gerar Visualização" para computar o t-SNE</div>
-                        <p class="text-muted">Isso pode levar alguns segundos dependendo do tamanho da galeria.</p>
-                    </div>
-                    <canvas id="tsne-canvas" class="chart-canvas hidden"></canvas>
+                <div id="embedding-loading" class="loading-screen">
+                    <div class="loading-spinner"></div>
+                    <p>Carregando mapa de embeddings...</p>
                 </div>
-
-                <div id="tsne-legend" class="hidden mt-4" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                <div id="plotly-container" class="plotly-container hidden"></div>
             </div>
         </div>
     `;
+
+    // Auto-load the embedding map
+    await _loadEmbeddingPlotly();
 }
 
-async function loadEmbeddingMap() {
-    const btn = document.getElementById('load-tsne-btn');
-    const placeholder = document.getElementById('tsne-placeholder');
-    const canvas = document.getElementById('tsne-canvas');
-    const legend = document.getElementById('tsne-legend');
-
-    btn.disabled = true;
-    btn.textContent = '⏳ Computando...';
-
-    if (placeholder) placeholder.innerHTML = `
-        <div class="loading-screen">
-            <div class="loading-spinner"></div>
-            <p>Computando t-SNE... Isso pode levar até 30 segundos.</p>
-        </div>
-    `;
+async function _loadEmbeddingPlotly() {
+    const loadingEl = document.getElementById('embedding-loading');
+    const plotContainer = document.getElementById('plotly-container');
+    const statsEl = document.getElementById('embedding-stats');
 
     try {
-        const data = await apiJson('/api/gallery/embedding-map?max_points=500');
+        const data = await apiJson('/api/gallery/embedding-map');
 
         if (!data.points || data.points.length === 0) {
-            if (placeholder) placeholder.innerHTML = `
+            loadingEl.innerHTML = `
                 <div class="empty-state">
+                    <div class="empty-state-icon">🌐</div>
                     <div class="empty-state-text">Sem dados para visualizar</div>
+                    <p class="text-muted">Carregue uma galeria com embeddings primeiro.</p>
                 </div>
             `;
             return;
         }
 
-        // Draw on canvas
-        if (placeholder) placeholder.classList.add('hidden');
-        canvas.classList.remove('hidden');
-        legend.classList.remove('hidden');
-        legend.style.display = 'flex';
+        // Show stats
+        if (statsEl) {
+            statsEl.innerHTML = `
+                <span class="badge badge-completed">${data.total_points} pontos · ${data.unique_labels.length} indivíduos</span>
+            `;
+        }
 
-        drawTSNE(canvas, data.points, data.unique_labels);
-        renderLegend(legend, data.unique_labels);
+        // Group points by label for separate Plotly traces
+        const grouped = {};
+        data.points.forEach(p => {
+            if (!grouped[p.label]) grouped[p.label] = { x: [], y: [], urls: [], label: p.label };
+            grouped[p.label].x.push(p.x);
+            grouped[p.label].y.push(p.y);
+            grouped[p.label].urls.push(p.image_url);
+        });
 
-        btn.textContent = '🔄 Recarregar';
-        btn.disabled = false;
+        // Generate colors
+        const labels = data.unique_labels;
+        const traces = labels.map((label, i) => {
+            const hue = (i * 360 / labels.length) % 360;
+            const color = `hsl(${hue}, 65%, 50%)`;
+            const g = grouped[label];
+            return {
+                x: g.x,
+                y: g.y,
+                mode: 'markers',
+                type: 'scattergl',
+                name: label,
+                text: g.urls,
+                customdata: g.urls,
+                marker: {
+                    size: 8,
+                    color: color,
+                    opacity: 0.75,
+                    line: { width: 1, color: 'rgba(255,255,255,0.6)' },
+                },
+                hovertemplate: `<b>${label}</b><br>x: %{x:.2f}<br>y: %{y:.2f}<extra></extra>`,
+            };
+        });
+
+        const layout = {
+            font: { family: "'Inter', sans-serif", color: '#1D2D44' },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: '#F7F8FA',
+            margin: { t: 20, r: 20, b: 50, l: 50 },
+            xaxis: {
+                title: 'UMAP 1',
+                gridcolor: '#E2E8F0',
+                zerolinecolor: '#E2E8F0',
+            },
+            yaxis: {
+                title: 'UMAP 2',
+                gridcolor: '#E2E8F0',
+                zerolinecolor: '#E2E8F0',
+            },
+            legend: {
+                title: { text: 'Indivíduos' },
+                itemsizing: 'constant',
+                font: { size: 11 },
+                bgcolor: 'rgba(255,255,255,0.85)',
+                bordercolor: '#E2E8F0',
+                borderwidth: 1,
+            },
+            dragmode: 'zoom',
+            hovermode: 'closest',
+            height: 600,
+        };
+
+        const config = {
+            responsive: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['sendDataToCloud', 'autoScale2d'],
+            toImageButtonOptions: {
+                format: 'png',
+                filename: 'dolphinid_embedding_map',
+                scale: 2,
+            },
+        };
+
+        // Hide loading, show plot
+        loadingEl.classList.add('hidden');
+        plotContainer.classList.remove('hidden');
+
+        Plotly.newPlot(plotContainer, traces, layout, config);
+
+        // Click event: open the dolphin photo in a lightbox
+        plotContainer.on('plotly_click', (eventData) => {
+            if (eventData.points && eventData.points.length > 0) {
+                const point = eventData.points[0];
+                const imageUrl = point.customdata;
+                const label = point.data.name;
+                if (imageUrl) {
+                    _openEmbeddingPhotoModal(imageUrl, label);
+                }
+            }
+        });
+
     } catch (err) {
-        if (placeholder) placeholder.innerHTML = `
+        loadingEl.innerHTML = `
             <div class="empty-state">
                 <div class="empty-state-icon">❌</div>
-                <div class="empty-state-text">Erro ao gerar t-SNE</div>
+                <div class="empty-state-text">Erro ao carregar embeddings</div>
                 <p class="text-muted">${err.message}</p>
             </div>
         `;
-        btn.textContent = '🔄 Tentar Novamente';
-        btn.disabled = false;
     }
 }
 
-function drawTSNE(canvas, points, labels) {
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
+/**
+ * Open a modal overlay showing the dolphin photo for a clicked embedding point.
+ */
+function _openEmbeddingPhotoModal(imageUrl, label) {
+    // Remove any existing modal
+    const existing = document.getElementById('embedding-photo-modal');
+    if (existing) existing.remove();
 
-    // Set canvas size
-    const rect = canvas.parentElement.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = 500 * dpr;
-    canvas.style.width = rect.width + 'px';
-    canvas.style.height = '500px';
-    ctx.scale(dpr, dpr);
+    const overlay = document.createElement('div');
+    overlay.id = 'embedding-photo-modal';
+    overlay.className = 'embedding-modal-overlay';
+    overlay.onclick = (e) => {
+        if (e.target === overlay) overlay.remove();
+    };
 
-    const w = rect.width;
-    const h = 500;
-    const padding = 40;
-
-    // Clear
-    ctx.fillStyle = '#F7F8FA';
-    ctx.fillRect(0, 0, w, h);
-
-    // Compute bounds
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    points.forEach(p => {
-        minX = Math.min(minX, p.x);
-        maxX = Math.max(maxX, p.x);
-        minY = Math.min(minY, p.y);
-        maxY = Math.max(maxY, p.y);
-    });
-
-    const rangeX = maxX - minX || 1;
-    const rangeY = maxY - minY || 1;
-
-    // Color palette
-    const colors = generateColors(labels.length);
-    const colorMap = {};
-    labels.forEach((label, i) => { colorMap[label] = colors[i]; });
-
-    // Draw points
-    points.forEach(p => {
-        const x = padding + ((p.x - minX) / rangeX) * (w - 2 * padding);
-        const y = padding + ((p.y - minY) / rangeY) * (h - 2 * padding);
-
-        ctx.beginPath();
-        ctx.arc(x, y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = colorMap[p.label] || '#999';
-        ctx.globalAlpha = 0.7;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-    });
-}
-
-function renderLegend(container, labels) {
-    const colors = generateColors(labels.length);
-    container.innerHTML = labels.map((label, i) => `
-        <div style="display:flex; align-items:center; gap:4px; padding:2px 8px; background:white; border-radius:12px; border:1px solid var(--border-light); font-size:0.8rem;">
-            <span style="width:10px; height:10px; border-radius:50%; background:${colors[i]}; display:inline-block;"></span>
-            <span style="font-weight:600;">${label}</span>
+    overlay.innerHTML = `
+        <div class="embedding-modal-content" onclick="event.stopPropagation()">
+            <div class="embedding-modal-header">
+                <span class="embedding-modal-title">Indivíduo ${label}</span>
+                <button class="lightbox-close-btn" onclick="document.getElementById('embedding-photo-modal').remove()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="embedding-modal-body">
+                <img src="${imageUrl}" alt="${label}" class="embedding-modal-img"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="embedding-modal-fallback" style="display:none;">
+                    <span>🐬</span>
+                    <p>Imagem não disponível</p>
+                </div>
+            </div>
+            <div class="embedding-modal-footer">
+                <button class="btn btn-primary btn-sm" onclick="navigate('#/gallery/individual?label=${encodeURIComponent(label)}'); document.getElementById('embedding-photo-modal').remove();">
+                    Ver todas as fotos de ${label}
+                </button>
+                <span class="text-muted" style="font-size: 0.8rem;">ESC para fechar</span>
+            </div>
         </div>
-    `).join('');
-}
+    `;
 
-function generateColors(n) {
-    const colors = [];
-    for (let i = 0; i < n; i++) {
-        const hue = (i * 360 / n) % 360;
-        colors.push(`hsl(${hue}, 65%, 50%)`);
-    }
-    return colors;
+    document.body.appendChild(overlay);
+
+    // ESC to close
+    const escHandler = (e) => {
+        if (e.key === 'Escape') {
+            overlay.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
 }
 
 

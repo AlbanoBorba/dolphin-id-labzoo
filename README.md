@@ -6,10 +6,13 @@ Aplicação desktop local que roda a pipeline de detecção (YOLO-World) e re-id
 
 ## Funcionalidades
 
-- **Pipeline de Identificação**: Selecione uma pasta de imagens → detecção automática de nadadeiras → identificação contra a galeria de referência
+- **Frontend**: Interface web rica estilo Single Page Application (SPA)
+- **Modelagem**: Extração de embeddings via ArcFace (PyTorch)
+- **Detecção**: Crop automático de nadadeiras via YOLOv8
+- **Busca por Similaridade**: Identificação rápida (1-N) utilizando similaridade de cossenos
 - **Revisão Visual**: Veja os resultados com Top-5 matches e confirme/corrija as identificações
 - **Explorador de Galeria**: Navegue pelos indivíduos conhecidos e suas fotos de referência
-- **Espaço Latente**: Visualize a projeção t-SNE dos embeddings (vetores de 512 dimensões)
+- **Espaço Latente**: Visualização interativa 2D do mapa de embeddings com UMAP e Plotly.js
 - **Exportação**: Relatórios em CSV e HTML
 
 ## Pré-requisitos
@@ -46,7 +49,8 @@ Isso copia:
 uv run python run.py
 ```
 
-Abra **http://localhost:8000** no navegador.
+### 4. Acessar
+Abra o navegador em `http://127.0.0.1:8000`
 
 ## Uso
 
