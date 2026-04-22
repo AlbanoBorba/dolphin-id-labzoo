@@ -1,0 +1,28 @@
+[project]
+name = "dolphin-id"
+version = "1.0.0"
+description = "DolphinID — Ferramenta de identificação automática de botos via foto-identificação de nadadeira dorsal"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "sqlmodel>=0.0.16",
+    "python-multipart>=0.0.9",
+    "pydantic-settings>=2.0.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "torchmetrics>=1.0.0",
+    "pytorch-lightning>=2.0.0",
+    "ultralytics>=8.1.0",
+    "opencv-python>=4.9.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "scikit-learn>=1.3.0",
+    "tqdm>=4.65.0",
+    "jinja2>=3.1.0",
+]
+
+[project.scripts]
+dolphin-id = "app.main:cli_entry"

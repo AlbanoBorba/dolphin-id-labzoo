@@ -1,0 +1,26 @@
+# Data directory (models, gallery, crops, db)
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+uv.lock
+
+# OS
+.DS_Store
+Thumbs.db
