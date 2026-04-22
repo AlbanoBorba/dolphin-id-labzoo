@@ -15,6 +15,8 @@ Aplicação desktop local que roda a pipeline de detecção (YOLO-World) e re-id
 - **Espaço Latente**: Visualização interativa 2D do mapa de embeddings com UMAP e Plotly.js
 - **Exportação**: Relatórios em CSV e HTML
 
+> **🤖 IA & Agentes (Spec-Kit)**: O projeto contém contexto estruturado para agentes de codificação. Veja a pasta [`docs/`](./docs/) para arquitetura e prompts de contexto (`AGENTS.md`).
+
 ## Pré-requisitos
 
 - Python 3.10+
@@ -64,6 +66,7 @@ Abra o navegador em `http://127.0.0.1:8000`
 
 ```
 dolphin-id/
+├── docs/                   # Documentação do projeto (Spec-Kit)
 ├── app/                    # Aplicação FastAPI
 │   ├── main.py            # Entry point
 │   ├── config.py          # Configuração
