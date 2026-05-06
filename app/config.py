@@ -10,7 +10,7 @@ These are configured via environment variables or the defaults below.
 """
 import os
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _project_root() -> Path:
@@ -50,8 +50,12 @@ class Settings(BaseSettings):
     embedding_size: int = 512
     top_k_matches: int = 5
 
-    class Config:
-        env_prefix = "DOLPHIN_ID_"
+    model_config = SettingsConfigDict(
+        env_prefix="DOLPHIN_ID_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
     @property
     def db_path(self) -> Path:
