@@ -128,7 +128,7 @@ async function renderHomePage(container) {
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">📝 Nome / Notas <span class="form-label-hint">(opcional)</span></label>
                         <input type="text" class="form-input" id="session-notes"
-                               placeholder="Campo Praia da Pinheira">
+                               placeholder="Campo da Tesoura">
                     </div>
                     <div class="form-group" style="flex: 0 0 auto; align-self: flex-end;">
                         <button class="btn btn-primary btn-lg" id="submit-btn" onclick="handleSubmit()" disabled>
