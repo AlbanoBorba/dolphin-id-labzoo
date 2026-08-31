@@ -86,13 +86,20 @@ dolphin-id/
 └── run.py                 # Launcher
 ```
 
-## Métricas do Modelo
+## Métricas de Avaliação
 
-| Métrica | Valor |
-|:---|:---:|
-| Top-1 Accuracy | 88.59% |
-| Top-5 Accuracy | 92.06% |
-| mAP | 86.98% |
+As métricas são avaliadas sob **protocolo honesto sem vazamento de rajada** (galeria histórica $\le 2024$ e consultas reais de $2025$, disjuntas no nível de encontro):
+
+| Métrica | Protocolo Geral (Todas as Formas) | Gate de Nadadeira Padrão (Aspect Ratio 1.5–3.0) | Observação Metodológica |
+|:---|:---:|:---:|:---|
+| **Top-1 Accuracy** | **68.60%** | **79.65%** | Reconhecimento de indivíduos reavistados na temporada seguinte |
+| **Top-5 Accuracy** | **75.62%** | **83.14%** | Chance do indivíduo correto estar no Top-5 sugerido |
+| **Top-10 Accuracy** | **78.51%** | **83.72%** | Sugestões apresentadas para triagem do biólogo |
+| **mAP** | **59.48%** | **68.31%** | Ordenação global de retrieval |
+
+> **Nota Metodológica (Invariante I-4):**
+> - **Escopo:** Subconjunto inequívoco de 60 indivíduos curados, avaliado sobre o split temporal versionado (`splits/temporal_split.parquet`, hash `6a1aed066d437bf6`).
+> - *Métricas antigas publicadas (~88,6% Top-1)* mediam auto-recuperação sobre o próprio treino com vazamento de rajada na diagonal. Os números acima refletem a capacidade real de reavistamento entre anos disjuntos.
 
 ## Tecnologias
 
