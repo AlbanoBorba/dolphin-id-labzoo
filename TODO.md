@@ -4,3 +4,4 @@ Alguns pontos de melhoria que observei para avaliarmos:
 
 2. Ainda na tela de resultados, tem que ser possível abrir a imagem do crop, para que o pesquisador consiga confirmar o individuo.
 
+3. Ao abrir a imagem no catálogo saber a localização no mapinha

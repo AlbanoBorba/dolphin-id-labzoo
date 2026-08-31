@@ -35,6 +35,19 @@ async def lifespan(app: FastAPI):
     from app.services.gallery import gallery_service
     try:
         gallery_service.load()
+
+        # Auto-import PKL into catalog DB on first run
+        from app.database import get_engine
+        from sqlmodel import Session, select
+        from app.models.catalog import CatalogCrop
+        engine = get_engine()
+        with Session(engine) as db:
+            existing = db.exec(select(CatalogCrop).limit(1)).first()
+            if existing is None:
+                logger.info("Catalog DB is empty — importing from PKL...")
+                count = gallery_service.import_from_pkl(db)
+                logger.info(f"Imported {count} entries from PKL into catalog DB")
+
         # Pre-compute UMAP 2D projection so the embedding map is ready instantly
         gallery_service.compute_2d_projection()
     except FileNotFoundError:
@@ -103,6 +116,7 @@ async def get_config():
         "yolo_weights": settings.yolo_weights.name,
         "yolo_exists": settings.yolo_weights.exists(),
         "yolo_confidence": settings.yolo_confidence,
+        "yolo_crop_min_confidence": settings.yolo_crop_min_confidence,
         "top_k_matches": settings.top_k_matches,
     }
 

@@ -4,9 +4,10 @@ DolphinID — Pipeline orchestrator.
 Coordinates the full processing pipeline:
   1. Scan input folder for images
   2. Run YOLO-World detection on each image
-  3. Extract embeddings from detected crops
-  4. Match against gallery
-  5. Store results in database
+  3. Filter crops by minimum confidence threshold
+  4. Create a Crop DB entry for each valid detection
+  5. Extract embeddings and match against gallery for each crop
+  6. Store results in database — all crops start as 'pending' for human review
 """
 import json
 import logging
@@ -19,7 +20,7 @@ from sqlmodel import Session
 from app.config import settings
 from app.database import get_engine
 from app.models.session import ProcessingSession
-from app.models.result import ProcessingResult
+from app.models.result import ProcessingResult, Crop
 from app.services import detection, identification
 from app.services.gallery import gallery_service
 
@@ -147,39 +148,70 @@ def _run_pipeline(session_id: int) -> None:
 
 
 def _process_single_image(result: ProcessingResult, crops_dir: Path, db: Session) -> None:
-    """Process a single image through detection and identification."""
+    """
+    Process a single image through detection and identification.
+
+    For each valid YOLO detection (above yolo_crop_min_confidence):
+      - Creates a Crop DB entry
+      - Extracts embedding and runs gallery matching
+      - Populates predicted_id, match_confidence, top5_matches
+
+    All crops start as status='pending' — no auto-confirm.
+    """
     image_path = Path(result.original_path)
 
-    # Step 1: YOLO Detection
+    # Step 1: YOLO Detection (returns all detections sorted by confidence)
     detections = detection.detect_and_crop(image_path, crops_dir)
 
-    if not detections:
+    # Step 2: Filter by minimum confidence threshold
+    valid_detections = [
+        d for d in detections
+        if d["confidence"] >= settings.yolo_crop_min_confidence
+    ]
+
+    if not valid_detections:
         result.status = "no_detection"
+        result.crop_count = 0
         db.add(result)
         return
 
-    # Use the best detection (highest confidence)
-    best = detections[0]
-    result.crop_path = best["crop_path"]
-    result.yolo_confidence = best["confidence"]
-    bbox = best["bbox"]
-    result.bbox_x = bbox[0]
-    result.bbox_y = bbox[1]
-    result.bbox_w = bbox[2]
-    result.bbox_h = bbox[3]
-    result.status = "detected"
-    db.add(result)
+    # Step 3: Create a Crop entry for each valid detection
+    for det in valid_detections:
+        bbox = det["bbox"]
 
-    # Step 2: Extract embedding
-    embedding = identification.extract_embedding(result.crop_path)
+        crop = Crop(
+            result_id=result.id,
+            crop_index=det["crop_index"],
+            crop_path=det["crop_path"],
+            yolo_confidence=det["confidence"],
+            yolo_class=det.get("class_name"),
+            bbox_x=bbox[0],
+            bbox_y=bbox[1],
+            bbox_w=bbox[2],
+            bbox_h=bbox[3],
+            status="pending",
+        )
 
-    # Step 3: Match against gallery
-    matches = gallery_service.find_matches(embedding, top_k=settings.top_k_matches)
+        # Step 4: Extract embedding and match against gallery
+        try:
+            embedding = identification.extract_embedding(crop.crop_path)
+            matches = gallery_service.find_matches(embedding, top_k=settings.top_k_matches)
 
-    if matches:
-        result.predicted_id = matches[0]["id"]
-        result.match_confidence = matches[0]["score"]
-        result.top5_matches = json.dumps(matches)
+            if matches:
+                crop.predicted_id = matches[0]["id"]
+                crop.match_confidence = matches[0]["score"]
+                crop.top5_matches = json.dumps(matches)
+        except Exception as e:
+            logger.warning(
+                f"Embedding/matching failed for crop {crop.crop_index} "
+                f"of {result.original_filename}: {e}",
+                exc_info=True
+            )
+            # Crop is still saved — just without identification predictions
 
-    result.status = "identified"
+        db.add(crop)
+
+    # Step 5: Update ProcessingResult summary
+    result.crop_count = len(valid_detections)
+    result.status = "needs_review"
     db.add(result)

@@ -90,6 +90,8 @@ def detect_and_crop(
     for crop_idx, box in enumerate(sorted_boxes):
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         conf_score = float(box.conf[0])
+        class_id = int(box.cls[0])
+        class_name = result.names.get(class_id, f"class_{class_id}")
 
         # Apply padding
         x1 = max(0, x1 - pad)
@@ -106,6 +108,7 @@ def detect_and_crop(
             "crop_path": str(crop_path),
             "crop_index": crop_idx,
             "confidence": conf_score,
+            "class_name": class_name,
             "bbox": (x1, y1, x2 - x1, y2 - y1),
         })
 

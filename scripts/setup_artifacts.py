@@ -145,6 +145,38 @@ def main():
     else:
         print("   ⚠️  No YOLO weights found!")
 
+    # 4. Import gallery PKL into catalog database
+    dest_gallery = gallery_dir / "dolphin_gallery.pkl"
+    if dest_gallery.exists():
+        print("\n📦 Importing gallery into catalog database...")
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+            from app.config import settings
+            from app.database import init_db, get_engine
+            from app.services.gallery import gallery_service
+            from sqlmodel import Session, select
+            from app.models.catalog import CatalogCrop
+
+            settings.ensure_directories()
+            init_db()
+            engine = get_engine()
+
+            with Session(engine) as db:
+                existing = db.exec(select(CatalogCrop).limit(1)).first()
+                if existing is not None:
+                    print("   ℹ️  Catalog DB already has data, skipping import.")
+                else:
+                    gallery_service.load()
+                    count = gallery_service.import_from_pkl(db)
+                    print(f"   ✅ Imported {count} entries into catalog database")
+        except Exception as e:
+            print(f"   ⚠️  Could not import gallery into DB: {e}")
+            print("   ℹ️  The app will auto-import on first startup.")
+    else:
+        print("\n   ℹ️  No gallery PKL to import into database.")
+
     print("\n🎉 Setup complete!")
     print(f"   Run the app with: python run.py")
 

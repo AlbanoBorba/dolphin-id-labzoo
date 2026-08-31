@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     # --- YOLO Detection ---
     yolo_confidence: float = 0.15
+    yolo_crop_min_confidence: float = 0.20  # Minimum YOLO confidence to keep a crop
     yolo_crop_padding: int = 20
     yolo_classes: list[str] = ["dolphin", "dorsal fin", "dolphin dorsal fin", "cetacean"]
 
@@ -77,6 +78,16 @@ class Settings(BaseSettings):
     def gallery_dir(self) -> Path:
         return self.data_dir / "gallery"
 
+    @property
+    def catalog_originals_dir(self) -> Path:
+        """Directory for stored original images in the catalog."""
+        return self.data_dir / "catalog" / "originals"
+
+    @property
+    def catalog_crops_dir(self) -> Path:
+        """Directory for stored crop images in the catalog."""
+        return self.data_dir / "catalog" / "crops"
+
     def resolve_database_url(self) -> str:
         if self.database_url:
             return self.database_url
@@ -84,7 +95,11 @@ class Settings(BaseSettings):
 
     def ensure_directories(self) -> None:
         """Create all required data directories."""
-        for d in [self.data_dir, self.crops_dir, self.uploads_dir, self.models_dir, self.gallery_dir, self.db_path.parent]:
+        for d in [
+            self.data_dir, self.crops_dir, self.uploads_dir,
+            self.models_dir, self.gallery_dir, self.db_path.parent,
+            self.catalog_originals_dir, self.catalog_crops_dir,
+        ]:
             d.mkdir(parents=True, exist_ok=True)
 
 
