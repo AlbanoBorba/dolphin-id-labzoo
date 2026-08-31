@@ -17,7 +17,7 @@ from sqlmodel import Session, select
 from app.config import settings
 from app.database import get_session
 from app.models.session import ProcessingSession
-from app.models.result import ProcessingResult
+from app.models.result import ProcessingResult, Crop
 from app.services.pipeline import start_pipeline
 
 router = APIRouter(prefix="/api/sessions", tags=["Sessions"])
@@ -143,10 +143,14 @@ def get_session_progress(session_id: int, db: Session = Depends(get_session)):
 def get_session_results(
     session_id: int,
     status: Optional[str] = None,
-    min_confidence: Optional[float] = None,
     db: Session = Depends(get_session),
 ):
-    """Get all results for a session with optional filtering."""
+    """
+    Get all results for a session with optional filtering.
+
+    Each result includes a nested list of its crops with detection,
+    identification, and review data.
+    """
     session = db.get(ProcessingSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -156,28 +160,34 @@ def get_session_results(
     if status:
         query = query.where(ProcessingResult.status == status)
 
-    results = db.exec(query.order_by(ProcessingResult.match_confidence.desc())).all()
-
-    # Apply confidence filter in Python (SQLite doesn't handle None well with comparisons)
-    if min_confidence is not None:
-        results = [r for r in results if r.match_confidence and r.match_confidence >= min_confidence]
+    results = db.exec(query.order_by(ProcessingResult.id)).all()
 
     items = []
     for r in results:
-        top5 = json.loads(r.top5_matches) if r.top5_matches else []
+        # Fetch all crops for this result
+        crops_for_result = db.exec(
+            select(Crop).where(Crop.result_id == r.id).order_by(Crop.crop_index)
+        ).all()
+
         items.append({
             "id": r.id,
             "original_filename": r.original_filename,
             "original_path": r.original_path,
-            "crop_path": r.crop_path,
             "status": r.status,
-            "yolo_confidence": r.yolo_confidence,
-            "predicted_id": r.predicted_id,
-            "match_confidence": r.match_confidence,
-            "top5_matches": top5,
-            "confirmed_id": r.confirmed_id,
-            "reviewer_notes": r.reviewer_notes,
-            "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+            "crop_count": r.crop_count,
+            "crops": [{
+                "id": c.id,
+                "crop_index": c.crop_index,
+                "crop_path": c.crop_path,
+                "yolo_confidence": c.yolo_confidence,
+                "yolo_class": getattr(c, 'yolo_class', None),
+                "bbox": {"x": c.bbox_x, "y": c.bbox_y, "w": c.bbox_w, "h": c.bbox_h},
+                "predicted_id": c.predicted_id,
+                "match_confidence": c.match_confidence,
+                "top5_matches": json.loads(c.top5_matches) if c.top5_matches else [],
+                "confirmed_id": c.confirmed_id,
+                "status": c.status,
+            } for c in crops_for_result],
         })
 
     return {"session_id": session_id, "total": len(items), "results": items}
@@ -205,6 +215,15 @@ async def create_session_from_upload(
         f for f in files
         if f.filename and Path(f.filename).suffix.lower() in IMAGE_EXTENSIONS
     ]
+
+    # Deduplicate by filename (browsers may send the same file twice)
+    seen_names: set[str] = set()
+    deduped_files = []
+    for f in valid_files:
+        if f.filename not in seen_names:
+            seen_names.add(f.filename)
+            deduped_files.append(f)
+    valid_files = deduped_files
 
     if not valid_files:
         raise HTTPException(

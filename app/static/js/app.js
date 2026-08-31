@@ -51,10 +51,12 @@ function statusBadge(status) {
         'processing': 'Processando',
         'completed': 'Concluído',
         'failed': 'Falhou',
-        'identified': 'Identificado',
-        'confirmed': 'Confirmado',
+        'needs_review': 'Revisão Pendente',
+        'cataloged': 'Catalogado',
+        'discarded': 'Descartado',
         'no_detection': 'Sem Detecção',
-        'detected': 'Detectado',
+        'approved': 'Aprovado',
+        'classified': 'Classificado'
     };
     return `<span class="badge badge-${status}">${labels[status] || status}</span>`;
 }

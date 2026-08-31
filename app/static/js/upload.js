@@ -71,8 +71,11 @@ async function renderHomePage(container) {
             <div class="card-body">
                 <!-- Upload Mode: File Picker -->
                 <div id="mode-upload-panel">
-                    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-                        <input type="file" id="file-input" multiple accept="image/*" style="display:none" onchange="handleFilesSelected(this.files)">
+                    <input type="file" id="file-input" multiple accept="image/*" style="display:none"
+                           onchange="handleFilesSelected(this.files)"
+                           onclick="event.stopPropagation()">
+                    <div class="upload-zone" id="upload-zone"
+                         onclick="event.stopPropagation(); document.getElementById('file-input').click()">
                         <div class="upload-zone-icon">📷</div>
                         <div class="upload-zone-text">Clique para selecionar imagens ou arraste aqui</div>
                         <div class="upload-zone-hint">JPG, PNG, BMP, TIFF · Múltiplos arquivos</div>
@@ -181,8 +184,17 @@ function handleFilesSelected(fileList) {
         return;
     }
 
-    _uploadState.selectedFiles = files;
-    renderUploadPreview(files);
+    // Deduplicate by name+size to guard against browser edge cases
+    const seen = new Set();
+    const uniqueFiles = files.filter(f => {
+        const key = `${f.name}|${f.size}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
+    _uploadState.selectedFiles = uniqueFiles;
+    renderUploadPreview(uniqueFiles);
     updateSubmitButton();
 }
 
@@ -379,7 +391,12 @@ function updateSubmitButton() {
     }
 }
 
+let _submitting = false;
+
 async function handleSubmit() {
+    if (_submitting) return; // Prevent double submission
+    _submitting = true;
+
     const year = parseInt(document.getElementById('session-year').value);
     const notes = document.getElementById('session-notes').value.trim();
     const btn = document.getElementById('submit-btn');
@@ -433,5 +450,6 @@ async function handleSubmit() {
         showToast(`Erro: ${err.message}`, 'error');
         btn.disabled = false;
         btn.textContent = '🔍 Iniciar Processamento';
+        _submitting = false;
     }
 }

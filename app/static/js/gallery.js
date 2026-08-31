@@ -67,10 +67,21 @@ async function renderIndividualPage(container, params) {
     try {
         const data = await apiJson(`/api/gallery/individuals/${encodeURIComponent(label)}`);
 
-        // Build image URLs for the lightbox gallery
-        const imageUrls = data.images.map((img, i) =>
-            `/api/gallery/individuals/${encodeURIComponent(label)}/image/${i}`
-        );
+        // Combine PKL and Catalog images into a unified list
+        const allImages = [
+            ...(data.pkl_images || []).map(img => ({
+                url: `/api/gallery/individuals/${encodeURIComponent(label)}/image/${img.index}`,
+                source: 'PKL',
+                meta: `Crop ${img.index}`
+            })),
+            ...(data.catalog_images || []).map(img => ({
+                url: `/api/gallery/catalog/images/${img.catalog_image_id}/original`,
+                source: 'Catálogo',
+                meta: 'Original'
+            }))
+        ];
+
+        const imageUrls = allImages.map(img => img.url);
 
         container.innerHTML = `
             <div class="page-header">
@@ -84,11 +95,11 @@ async function renderIndividualPage(container, params) {
             </div>
 
             <div class="gallery-grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
-                ${data.images.map((img, i) => `
+                ${allImages.map((img, i) => `
                     <div class="gallery-card gallery-card-clickable" onclick="openGalleryLightbox(${JSON.stringify(imageUrls).replace(/"/g, '&quot;')}, ${i}, '${data.label.replace(/'/g, "\\'")}')">
                         <div class="gallery-card-image-wrapper">
                             <img class="gallery-card-image" 
-                                 src="/api/gallery/individuals/${encodeURIComponent(label)}/image/${i}"
+                                 src="${img.url}"
                                  alt="${label} - ${i}"
                                  onerror="this.style.display='none'"
                                  loading="lazy"
@@ -97,8 +108,9 @@ async function renderIndividualPage(container, params) {
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
                             </div>
                         </div>
-                        <div class="gallery-card-body" style="padding: 8px 12px;">
+                        <div class="gallery-card-body" style="padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
                             <div class="gallery-card-meta">Foto ${i + 1}</div>
+                            <div class="badge badge-completed" style="font-size: 0.65rem;">${img.source}</div>
                         </div>
                     </div>
                 `).join('')}
